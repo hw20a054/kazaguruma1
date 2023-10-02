@@ -1,0 +1,193 @@
+<html>
+
+<head>
+  <title>three.js + ar.js</title>
+  <meta name="viewport" content="width=device-width, viewport-fit=cover, shrink-to-fit=no" />
+  <meta charset="utf-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+    }
+
+    .wrapper {
+      position: relative;
+      overflow: hidden;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrapper">
+    <canvas></canvas>
+  </div>
+  <!--❶ three.jsとAR.jsを読み込む-->
+  <script type="module">
+    import { OrbitControls } from '../three/examples/jsm/controls/OrbitControls.js';
+    let controls;
+  </script>
+  <script src="https://unpkg.com/three@0.127.0/build/three.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/3.3.3/three.js/build/ar.js"></script>
+  <script async>
+    const renderer = new THREE.WebGLRenderer({
+      canvas: document.querySelector('canvas'),
+      antialias: true,
+      alpha: true
+    });
+    const camera = new THREE.PerspectiveCamera();
+    const scene = new THREE.Scene();
+    const markerRoot = new THREE.Group();
+    const arToolkitContext = new THREEx.ArToolkitContext({
+      cameraParametersUrl: './camera.dat', // ❷ camera.datを読み込む
+      detectionMode: 'mono'
+    });
+    const arToolkitSource = new THREEx.ArToolkitSource({
+      sourceType: 'webcam'
+    });
+    const arMarkerControl = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
+      type: 'pattern',
+      patternUrl: 'pattern.patt' // ❸ pattern.pattを読み込む
+    });
+
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    window.addEventListener('resize', handleResize, {
+      passive: true
+    });
+
+    arToolkitContext.init(() => {
+      camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+    });
+
+    arToolkitSource.init(() => {
+      document.querySelector('.wrapper').appendChild(arToolkitSource.domElement); // ❹ videoタグを.wrapper配下に移動させる
+      setTimeout(handleResize, 400); // ❺ リサイズイベントを一度発火させる
+    });
+
+    scene.add(markerRoot);
+
+    let m01Flg = 1;
+    let m02Flg = 1;
+    let m03Flg = 0;
+
+
+    //風車の中心を生成
+    const center_geometry = new THREE.BoxGeometry(0.35, 0.1, 0.35);
+    const center_material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const center = new THREE.Mesh(center_geometry, center_material);
+    center.position.set(0, -0.1, 0);
+    center.rotation.y = 45;
+    center.name = "OBJECT003";
+    markerRoot.add(center);
+
+
+    //風車の棒を生成
+
+    const temoti_geometry = new THREE.BoxGeometry(0.25, 5, 0.1);
+    const temoti_material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const temoti = new THREE.Mesh(temoti_geometry, temoti_material);
+
+    temoti.position.set(0, -1.5, 2);
+    temoti.rotation.x = 90;
+    temoti.name = "object001";
+    markerRoot.add(temoti);
+
+
+
+    //風車の花を生成
+
+    const kazaguruma_geometry = new THREE.TorusKnotGeometry(10 * 0.1, 2 * 0.1, 20, 3, 3, 5);
+    const kazaguruma_material = new THREE.MeshBasicMaterial({ color: 0xF0B2B7 });
+    const kazaguruma = new THREE.Mesh(kazaguruma_geometry, kazaguruma_material);
+
+    const kazagurumaflame_geometry = new THREE.TorusKnotGeometry(10 * 0.1, 2 * 0.1, 20, 3, 3, 5);
+    const kazagurumaflame_material = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+    kazagurumaflame_material.wireframe = true;
+    const kazagurumaflame = new THREE.Mesh(kazagurumaflame_geometry, kazagurumaflame_material);
+    kazagurumaflame.name = "OBJECT002"
+
+    kazaguruma.position.set(0, 0, 0);
+    kazaguruma.rotation.x = 90;
+    kazaguruma.add(kazagurumaflame);
+    kazaguruma.name = "OBJECT002";
+    markerRoot.add(kazaguruma);
+
+
+
+
+    function animate() {
+      requestAnimationFrame(animate);
+      //風車のアニメーション
+      if (m02Flg != 1) {
+        kazaguruma.rotation.z += Math.PI / 180;
+      }
+      renderer.render(scene, camera);
+    }
+    animate();
+
+
+
+    renderer.setAnimationLoop((delta) => {
+      if (arToolkitSource.ready) {
+        arToolkitContext.update(arToolkitSource.domElement);
+      }
+
+      renderer.render(scene, camera);
+    });
+
+    function handleResize() {
+      if (arToolkitSource.ready) {
+        arToolkitSource.onResize();
+        arToolkitSource.copySizeTo(renderer.domElement);
+      }
+
+      renderer.setPixelRatio(window.devicePixelRatio);
+    }
+
+    window.addEventListener("mousedown", function (ret) {
+      let mouseX = ret.clientX;                           // マウスのx座標
+      let mouseY = ret.clientY;                           // マウスのy座標
+      //console.log(mouseX + " : " + mouseY);
+      mouseX = (mouseX / window.innerWidth) * 2 - 1;    // -1 ～ +1 に正規化されたx座標
+      mouseY = -(mouseY / window.innerHeight) * 2 + 1;    // -1 ～ +1 に正規化されたy座標
+      let pos = new THREE.Vector3(mouseX, mouseY, 1);     // マウスベクトル
+      pos.unproject(camera);                              // スクリーン座標系をカメラ座標系に変換
+      // レイキャスタを作成（始点, 向きのベクトル）
+      let ray = new THREE.Raycaster(camera.position, pos.sub(camera.position).normalize());
+      let obj = ray.intersectObjects(scene.children, true);   // レイと交差したオブジェクトの取得
+      console.log(obj);
+      console.log(obj[0]);
+      var found = obj.find(e => e.Indexface === null);
+      console.log(found);
+      if (obj.length > 0) {                                // 交差したオブジェクトがあれば
+        picked(obj[0].object.name);                       // ピックされた対象に応じた処理を実行
+        console.log(obj[0].object.name)
+        // m01Flg = -1 * m01Flg;
+        console.log("debug 001");
+      }
+      console.log("-----");
+    });
+
+    function picked(objName) {
+      console.log("objName = " + objName);
+      switch (objName) {
+        case "object001 ":
+          console.log("OBJECT001 hit");
+          m01Flg = -1 * m01Flg;
+          break;
+        case "OBJECT002":
+          console.log("OBJECT002 hit");
+          m02Flg = -1 * m02Flg;
+          break;
+        case "OBJECT003":
+          console.log("OBJECT003 hit");
+          if (m03Flg == 0) { m03Flg = 1; } else { m03Flg = -1 * m03Flg; }
+          break;
+        default:
+          break;
+      }
+    }
+  </script>
+</body>
+
+</html>
